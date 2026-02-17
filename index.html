@@ -1,13 +1,16 @@
 <!DOCTYPE html>
-<html lang="th">
+<html lang="th" data-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>แดชบอร์ด - Todo App</title>
+    <meta name="description" content="Todo App Dashboard - ระบบจัดการงานอัจฉริยะ">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
@@ -15,24 +18,24 @@
 
     <div class="main-content" id="mainContent">
         <div class="container">
-            <h1>แดชบอร์ด</h1>
+            <h1>📊 แดชบอร์ด</h1>
             
             <div class="dashboard">
                 <div class="stat-card">
+                    <div class="stat-label">งานทั้งหมด</div>
                     <div class="stat-value" id="totalTasks">0</div>
-                    <div class="stat-label">ทั้งหมด</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-value" id="completedTasks">0</div>
                     <div class="stat-label">เสร็จแล้ว</div>
+                    <div class="stat-value" id="completedTasks">0</div>
                 </div>
                 <div class="stat-card">
-                    <div class="stat-value" id="pendingTasks">0</div>
                     <div class="stat-label">รอดำเนินการ</div>
+                    <div class="stat-value" id="pendingTasks">0</div>
                 </div>
                 <div class="stat-card">
+                    <div class="stat-label">อัตราสำเร็จ</div>
                     <div class="stat-value" id="completionRate">0%</div>
-                    <div class="stat-label">อัตราการเสร็จสิ้น</div>
                 </div>
             </div>
 
@@ -48,16 +51,5 @@
     </div>
 
     <script src="js/main.js"></script>
-    <script>
-        // Load sidebar component
-        fetch('components/sidebar.html')
-            .then(response => response.text())
-            .then(data => {
-                document.getElementById('sidebar-container').innerHTML = data;
-                // Set active nav item
-                document.querySelector('.nav-item[onclick*="index.html"]').classList.add('active');
-            });
-    </script>
 </body>
 </html>
-

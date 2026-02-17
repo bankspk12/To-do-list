@@ -1,12 +1,15 @@
 <!DOCTYPE html>
-<html lang="th">
+<html lang="th" data-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>รายการสิ่งที่ต้องทำ</title>
+    <title>รายการสิ่งที่ต้องทำ - Todo App</title>
+    <meta name="description" content="Todo App - จัดการรายการสิ่งที่ต้องทำ">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
@@ -14,46 +17,83 @@
 
     <div class="main-content" id="mainContent">
         <div class="container">
-            <h1>รายการสิ่งที่ต้องทำ</h1>
-            
+            <h1>📝 รายการสิ่งที่ต้องทำ</h1>
+
+            <!-- Search Bar -->
+            <div class="search-bar" id="searchBar">
+                <i class="fas fa-search search-icon"></i>
+                <input type="text" id="searchInput" placeholder="ค้นหางาน...">
+                <button id="clearSearchBtn" class="clear-search-btn" style="display:none;">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+
+            <!-- Progress Bar -->
+            <div class="progress-section" id="progressSection">
+                <div class="progress-info">
+                    <span id="progressText">0 / 0 งานเสร็จ</span>
+                    <span id="progressPercent">0%</span>
+                </div>
+                <div class="progress-track">
+                    <div class="progress-fill" id="progressFill" style="width:0%"></div>
+                </div>
+            </div>
+
+            <!-- Add Task -->
             <div class="input-group">
-                <input type="text" id="taskInput" placeholder="เพิ่มรายการที่ต้องทำ...">
+                <input type="text" id="taskInput" placeholder="เพิ่มงานใหม่...">
                 <select id="taskCategory">
-                    <option value="งาน">งาน</option>
-                    <option value="ส่วนตัว">ส่วนตัว</option>
-                    <option value="การเรียน">การบ้าน</option>
-                    <option value="อื่นๆ">อื่นๆ</option>
+                    <option value="งาน">🏢 งาน</option>
+                    <option value="ส่วนตัว">👤 ส่วนตัว</option>
+                    <option value="การเรียน">📚 การบ้าน</option>
+                    <option value="อื่นๆ">📌 อื่นๆ</option>
                 </select>
                 <input type="date" id="taskDueDate">
                 <select id="taskPriority">
-                    <option value="low">ความสำคัญต่ำ</option>
-                    <option value="medium">ความสำคัญปานกลาง</option>
-                    <option value="high">ความสำคัญสูง</option>
+                    <option value="low">🟢 ต่ำ</option>
+                    <option value="medium">🟡 ปานกลาง</option>
+                    <option value="high">🔴 สูง</option>
                 </select>
-                <button onclick="addTask()">เพิ่ม</button>
+                <button id="addTaskBtn">+ เพิ่ม</button>
             </div>
 
-            <div class="task-filters">
-                <button class="filter-btn active" onclick="filterTasks('all')">ทั้งหมด</button>
-                <button class="filter-btn" onclick="filterTasks('pending')">รอดำเนินการ</button>
-                <button class="filter-btn" onclick="filterTasks('completed')">เสร็จแล้ว</button>
-                <button class="filter-btn" onclick="filterTasks('high')">ความสำคัญสูง</button>
+            <!-- Toolbar: Filters + View Toggle -->
+            <div class="task-toolbar">
+                <div class="task-filters">
+                    <button class="filter-btn active" data-filter="all">ทั้งหมด</button>
+                    <button class="filter-btn" data-filter="pending">รอดำเนินการ</button>
+                    <button class="filter-btn" data-filter="completed">เสร็จแล้ว</button>
+                    <button class="filter-btn" data-filter="high">สำคัญสูง</button>
+                </div>
+                <div class="view-toggle">
+                    <button class="view-btn active" id="listViewBtn" title="มุมมองลิสต์">
+                        <i class="fas fa-list"></i>
+                    </button>
+                    <button class="view-btn" id="calendarViewBtn" title="มุมมองปฏิทิน">
+                        <i class="fas fa-calendar-alt"></i>
+                    </button>
+                </div>
             </div>
 
+            <!-- List View -->
             <ul id="taskList"></ul>
+
+            <!-- Calendar View -->
+            <div id="calendarView" class="calendar-view" style="display:none;">
+                <div class="cal-header">
+                    <button id="calPrev" class="cal-nav-btn"><i class="fas fa-chevron-left"></i></button>
+                    <h2 id="calMonthYear"></h2>
+                    <button id="calNext" class="cal-nav-btn"><i class="fas fa-chevron-right"></i></button>
+                    <button id="calToday" class="cal-today-btn">วันนี้</button>
+                </div>
+                <div class="cal-weekdays">
+                    <span>อา</span><span>จ</span><span>อ</span><span>พ</span><span>พฤ</span><span>ศ</span><span>ส</span>
+                </div>
+                <div id="calDays" class="cal-days"></div>
+            </div>
         </div>
     </div>
 
     <script src="js/main.js"></script>
-    <script>
-        // Load sidebar component
-        fetch('components/sidebar.html')
-            .then(response => response.text())
-            .then(data => {
-                document.getElementById('sidebar-container').innerHTML = data;
-                // Set active nav item
-                document.querySelector('.nav-item[onclick*="tasks.html"]').classList.add('active');
-            });
-    </script>
 </body>
-</html> 
+</html>
