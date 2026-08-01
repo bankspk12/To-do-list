@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="th" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tasknest - รายงานสรุปผลงาน</title>
+    <meta name="description" content="Tasknest - Task Summary Report Generator">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="css/styles.css">
+
+    <!-- Firebase SDK (Compat Version for Vanilla JS) -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+</head>
+<body>
+    <div id="sidebar-container"></div>
+
+    <div class="main-content" id="mainContent">
+        <div class="container" style="max-width: 1000px;">
+            <div class="report-header-actions">
+                <div>
+                    <h1>📑 Tasknest รายงานสรุปผลงาน</h1>
+                    <p style="color:var(--text-muted);font-size:0.9rem;margin-top:4px;">สรุปผลงานและความคืบหน้าประจำเดือน</p>
+                </div>
+                <div class="report-btn-group">
+                    <button id="copyMarkdownBtn" class="btn btn-secondary">
+                        <i class="fas fa-copy"></i> คัดลอกข้อความสรุป (Copy Text)
+                    </button>
+                    <button id="exportPdfReportBtn" class="btn btn-primary">
+                        <i class="fas fa-file-pdf"></i> ดาวน์โหลด PDF Report
+                    </button>
+                </div>
+            </div>
+
+            <!-- Report Filter Toolbar -->
+            <div class="report-filter-bar">
+                <div class="filter-item">
+                    <label><i class="fas fa-calendar-alt"></i> เลือกประจำเดือน:</label>
+                    <select id="reportMonthSelect" class="form-select"></select>
+                </div>
+                <div class="filter-item">
+                    <label><i class="fas fa-folder"></i> เลือกหมวดหมู่ / Project:</label>
+                    <select id="reportCategorySelect" class="form-select">
+                        <option value="all">📁 ทุกหมวดหมู่ / โปรเจกต์</option>
+                        <option value="งาน">🏢 งาน</option>
+                        <option value="ส่วนตัว">👤 ส่วนตัว</option>
+                        <option value="การเรียน">📚 การบ้าน</option>
+                        <option value="อื่นๆ">📌 อื่นๆ</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Printable Report Document Card -->
+            <div class="report-paper" id="reportPrintArea">
+                <div class="paper-header">
+                    <div>
+                        <h2 class="paper-title">TASKNEST MONTHLY SUMMARY REPORT</h2>
+                        <div class="paper-subtitle" id="reportPeriodText">ประจำเดือน: -</div>
+                    </div>
+                    <div class="paper-meta">
+                        <span id="reportGeneratedDate">วันที่สร้างรายงาน: -</span>
+                        <span class="confidential-badge">INTERNAL REPORT</span>
+                    </div>
+                </div>
+
+                <!-- KPI Cards inside Report -->
+                <div class="report-kpi-grid">
+                    <div class="report-kpi-card success">
+                        <div class="kpi-num" id="kpiCompleted">0</div>
+                        <div class="kpi-lbl">งานที่สำเร็จแล้ว (Done)</div>
+                    </div>
+                    <div class="report-kpi-card pending">
+                        <div class="kpi-num" id="kpiOngoing">0</div>
+                        <div class="kpi-lbl">กำลังดำเนินการ (In Progress)</div>
+                    </div>
+                    <div class="report-kpi-card danger">
+                        <div class="kpi-num" id="kpiOverdue">0</div>
+                        <div class="kpi-lbl">ประเด็นเสี่ยง/เกินกำหนด (Blockers)</div>
+                    </div>
+                    <div class="report-kpi-card accent">
+                        <div class="kpi-num" id="kpiEstHours">0h</div>
+                        <div class="kpi-lbl">ประเมินเวลารวม (Man-Hours)</div>
+                    </div>
+                </div>
+
+                <!-- Section 1: Task Overview -->
+                <div class="report-section">
+                    <h3 class="section-title"><i class="fas fa-chart-pie"></i> 1. ภาพรวมสรุปการดำเนินงาน (Overview)</h3>
+                    <div class="section-content" id="executiveSummaryText">
+                        กำลังประมวลผลข้อมูล...
+                    </div>
+                </div>
+
+                <!-- Section 2: Key Accomplishments -->
+                <div class="report-section">
+                    <h3 class="section-title"><i class="fas fa-check-circle" style="color:var(--success);"></i> 2. ผลงานที่ทำเสร็จแล้ว (Completed Tasks)</h3>
+                    <div class="section-content" id="completedListSection"></div>
+                </div>
+
+                <!-- Section 3: Ongoing Projects -->
+                <div class="report-section">
+                    <h3 class="section-title"><i class="fas fa-spinner" style="color:var(--warning);"></i> 3. งานและโปรเจกต์กำลังดำเนินการ (Ongoing Tasks)</h3>
+                    <div class="section-content" id="ongoingListSection"></div>
+                </div>
+
+                <!-- Section 4: Next Month Plan -->
+                <div class="report-section">
+                    <h3 class="section-title"><i class="fas fa-bullseye" style="color:var(--accent-light);"></i> 4. แผนงานเร่งด่วน & กำหนดส่งเร็ว ๆ นี้ (Upcoming Priority Tasks)</h3>
+                    <div class="section-content" id="plannedListSection"></div>
+                </div>
+
+                <!-- Section 5: Blockers & Risks -->
+                <div class="report-section">
+                    <h3 class="section-title"><i class="fas fa-exclamation-triangle" style="color:var(--danger);"></i> 5. ประเด็นเสี่ยงและงานติดขัด (Blockers & Risk Items)</h3>
+                    <div class="section-content" id="blockersListSection"></div>
+                </div>
+
+                <div class="paper-footer">
+                    <span>Tasknest Task Management System</span>
+                    <span>Page 1 of 1</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Core App Modules -->
+    <script src="js/firebase-config.js"></script>
+    <script src="js/storage-adapter.js"></script>
+    <script src="js/modules/theme.js"></script>
+    <script src="js/modules/toast.js"></script>
+    <script src="js/modules/export.js"></script>
+    <script src="js/modules/sidebar.js"></script>
+    <script src="js/modules/smart-date.js"></script>
+    <script src="js/modules/modals.js"></script>
+    <script src="js/report.js"></script>
+</body>
+</html>

@@ -1,36 +1,62 @@
+<button class="mobile-toggle-btn" id="mobileMenuBtn" title="เปิดเมนู">
+  <i class="fas fa-bars"></i>
+</button>
+
+<div class="sidebar-overlay" id="sidebarOverlay"></div>
+
 <div class="sidebar" id="sidebar">
   <div class="sidebar-header">
-    <h2>Todo App</h2>
-    <button class="toggle-btn" id="toggleSidebarBtn">
+    <div class="brand-logo">
+      <i class="fas fa-feather-alt brand-icon"></i>
+      <span class="brand-title">Tasknest</span>
+      <span class="version-tag">v3.2</span>
+    </div>
+    <button class="toggle-btn" id="toggleSidebarBtn" title="พับ/ขยาย เมนู">
       <i class="fas fa-bars"></i>
     </button>
   </div>
 
-  <a href="index.html" class="nav-item" id="nav-dashboard">
-    <i class="fas fa-chart-line"></i>
-    <span>แดชบอร์ด</span>
-  </a>
+  <div class="nav-section">
+    <a href="index.html" class="nav-item" id="nav-dashboard">
+      <i class="fas fa-chart-line"></i>
+      <span>แดชบอร์ด</span>
+    </a>
 
-  <a href="tasks.html" class="nav-item" id="nav-tasks">
-    <i class="fas fa-tasks"></i>
-    <span>รายการงาน</span>
-  </a>
+    <a href="tasks.html" class="nav-item" id="nav-tasks">
+      <i class="fas fa-tasks"></i>
+      <span>รายการงาน</span>
+    </a>
+
+    <a href="report.html" class="nav-item" id="nav-report">
+      <i class="fas fa-file-invoice"></i>
+      <span>รายงานสรุป</span>
+    </a>
+  </div>
+
+  <div class="sidebar-divider"></div>
+
+  <div class="sidebar-tools">
+    <button class="nav-item-btn" id="quickAddShortcutBtn" title="จดด่วน">
+      <i class="fas fa-bolt"></i>
+      <span>จดด่วน <kbd>Ctrl+K</kbd></span>
+    </button>
+  </div>
 
   <div class="theme-toggle">
-    <button class="theme-btn" id="themeToggleBtn">
+    <button class="theme-btn" id="themeToggleBtn" title="เปลี่ยนธีม">
       <i class="fas fa-moon"></i>
-      <span>ธีม</span>
+      <span>เปลี่ยนธีม</span>
     </button>
   </div>
 
   <div class="export-buttons">
-    <button class="export-btn" id="exportPdfBtn">
+    <button class="export-btn" id="exportPdfBtn" title="Export PDF">
       <i class="fas fa-file-pdf"></i>
-      <span>Export เป็น PDF</span>
+      <span>Export PDF</span>
     </button>
-    <button class="export-btn" id="exportExcelBtn">
+    <button class="export-btn" id="exportExcelBtn" title="Export Excel">
       <i class="fas fa-file-excel"></i>
-      <span>Export เป็น Excel</span>
+      <span>Export Excel</span>
     </button>
   </div>
 </div>

@@ -3,21 +3,25 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>รายการสิ่งที่ต้องทำ - Todo App</title>
-    <meta name="description" content="Todo App - จัดการรายการสิ่งที่ต้องทำ">
+    <title>Tasknest - รายการสิ่งที่ต้องทำ</title>
+    <meta name="description" content="Tasknest - จัดการรายการสิ่งที่ต้องทำและวางแผนงาน">
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link rel="stylesheet" href="css/styles.css">
+
+    <!-- Firebase SDK (Compat Version for Vanilla JS) -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
 </head>
 <body>
     <div id="sidebar-container"></div>
 
     <div class="main-content" id="mainContent">
         <div class="container">
-            <h1>📝 รายการสิ่งที่ต้องทำ</h1>
+            <h1>📝 Tasknest รายการสิ่งที่ต้องทำ</h1>
 
             <!-- Search Bar -->
             <div class="search-bar" id="searchBar">
@@ -39,22 +43,23 @@
                 </div>
             </div>
 
-            <!-- Add Task -->
+            <!-- Add Task Input Group -->
             <div class="input-group">
-                <input type="text" id="taskInput" placeholder="เพิ่มงานใหม่...">
+                <input type="text" id="taskInput" placeholder="เพิ่มงานใหม่... (หรือกด Ctrl+K เพื่อจดด่วน)">
                 <select id="taskCategory">
                     <option value="งาน">🏢 งาน</option>
                     <option value="ส่วนตัว">👤 ส่วนตัว</option>
                     <option value="การเรียน">📚 การบ้าน</option>
                     <option value="อื่นๆ">📌 อื่นๆ</option>
                 </select>
-                <input type="date" id="taskDueDate">
+                <input type="date" id="taskDueDate" title="วันครบกำหนด">
+                <input type="number" id="taskEstHours" min="0" step="0.5" placeholder="ชม." style="width: 70px;" title="ประเมินเวลา (ชั่วโมง)">
                 <select id="taskPriority">
-                    <option value="low">🟢 ต่ำ</option>
-                    <option value="medium">🟡 ปานกลาง</option>
-                    <option value="high">🔴 สูง</option>
+                    <option value="high">🔴 P0 - สำคัญด่วน</option>
+                    <option value="medium" selected>🟡 P1 - ปานกลาง</option>
+                    <option value="low">🟢 P2 - ทั่วไป</option>
                 </select>
-                <button id="addTaskBtn">+ เพิ่ม</button>
+                <button id="addTaskBtn">+ เพิ่มงาน</button>
             </div>
 
             <!-- Toolbar: Filters + View Toggle -->
@@ -63,7 +68,7 @@
                     <button class="filter-btn active" data-filter="all">ทั้งหมด</button>
                     <button class="filter-btn" data-filter="pending">รอดำเนินการ</button>
                     <button class="filter-btn" data-filter="completed">เสร็จแล้ว</button>
-                    <button class="filter-btn" data-filter="high">สำคัญสูง</button>
+                    <button class="filter-btn" data-filter="high">สำคัญสูง (P0)</button>
                 </div>
                 <div class="view-toggle">
                     <button class="view-btn active" id="listViewBtn" title="มุมมองลิสต์">
@@ -94,6 +99,15 @@
         </div>
     </div>
 
+    <!-- Core App Modules -->
+    <script src="js/firebase-config.js"></script>
+    <script src="js/storage-adapter.js"></script>
+    <script src="js/modules/theme.js"></script>
+    <script src="js/modules/toast.js"></script>
+    <script src="js/modules/export.js"></script>
+    <script src="js/modules/sidebar.js"></script>
+    <script src="js/modules/smart-date.js"></script>
+    <script src="js/modules/modals.js"></script>
     <script src="js/main.js"></script>
 </body>
 </html>

@@ -1,6 +1,6 @@
 /**
- * Todo App - Main Logic
- * Features: CRUD, Search, Edit, Drag&Drop, Progress, Calendar, Due Date Alerts
+ * Todo App - Main Application Controller (v3.0 Refactored & Modularized)
+ * Relies on StorageAdapter, ThemeModule, SidebarModule, ToastModule, ModalsModule, ExportModule
  */
 
 (function () {
@@ -11,14 +11,11 @@
         tasks: [],
         filter: 'all',
         search: '',
-        theme: 'dark',
         currentView: 'list',
         calMonth: new Date().getMonth(),
         calYear: new Date().getFullYear(),
-        editingId: null,
         draggedId: null,
-        refreshInterval: null,
-        charts: { status: null, category: null }
+        charts: { status: null, category: null, priority: null }
     };
 
     const THAI_MONTHS = [
@@ -26,16 +23,17 @@
         'กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'
     ];
 
+    window.getTaskById = (id) => STATE.tasks.find(t => t.id === id);
+
     // ============================================================
     // DOM Cache
     // ============================================================
     const DOM = {
-        sidebarContainer: document.getElementById('sidebar-container'),
-        mainContent: document.getElementById('mainContent'),
         taskList: document.getElementById('taskList'),
         taskInput: document.getElementById('taskInput'),
         taskCategory: document.getElementById('taskCategory'),
         taskDueDate: document.getElementById('taskDueDate'),
+        taskEstHours: document.getElementById('taskEstHours'),
         taskPriority: document.getElementById('taskPriority'),
         addTaskBtn: document.getElementById('addTaskBtn'),
         searchInput: document.getElementById('searchInput'),
@@ -56,125 +54,187 @@
         completedTasks: document.getElementById('completedTasks'),
         pendingTasks: document.getElementById('pendingTasks'),
         completionRate: document.getElementById('completionRate'),
+        totalHoursText: document.getElementById('totalHoursText'),
+        completedHoursText: document.getElementById('completedHoursText'),
+        pendingUrgentText: document.getElementById('pendingUrgentText'),
+        completionProgressFill: document.getElementById('completionProgressFill'),
+        sysHealthStatus: document.getElementById('sysHealthStatus'),
+        aiVelocityScore: document.getElementById('aiVelocityScore'),
+        aiInsightsText: document.getElementById('aiInsightsText'),
+        aiRecommendationChips: document.getElementById('aiRecommendationChips'),
+        executiveWatchlist: document.getElementById('executiveWatchlist'),
         statusChartCanvas: document.getElementById('statusChart'),
-        categoryChartCanvas: document.getElementById('categoryChart')
+        categoryChartCanvas: document.getElementById('categoryChart'),
+        priorityChartCanvas: document.getElementById('priorityChart'),
+        dashQuickAddBtn: document.getElementById('dashQuickAddBtn'),
+        dashExportPdfBtn: document.getElementById('dashExportPdfBtn')
     };
 
     // ============================================================
-    // Init
+    // Init & Boot
     // ============================================================
-    function init() {
-        loadState();
-        initTheme();
-        loadSidebar().then(() => { setupSidebarEvents(); highlightActiveNav(); });
+    async function init() {
+        if (window.ThemeModule) window.ThemeModule.init();
+        if (window.SidebarModule) await window.SidebarModule.load();
+        if (window.ModalsModule) window.ModalsModule.init();
 
         if (isDashboard()) initDashboard();
         else if (isTaskPage()) initTaskPage();
 
-        startAutoRefresh();
-        createEditModal();
+        // Single Source of Truth: Data Storage Adapter Initialization
+        if (window.storageAdapter) {
+            STATE.tasks = await window.storageAdapter.getTasks();
+            refreshUI();
+
+            window.storageAdapter.onTasksUpdated((tasks) => {
+                STATE.tasks = tasks;
+                refreshUI();
+            });
+        }
     }
 
     function isDashboard() { return !!DOM.statusChartCanvas; }
     function isTaskPage() { return !!DOM.taskList; }
 
-    // ============================================================
-    // State Persistence
-    // ============================================================
-    function loadState() {
-        try {
-            STATE.tasks = JSON.parse(localStorage.getItem('tasks') || '[]');
-            STATE.theme = localStorage.getItem('theme') || 'dark';
-        } catch (e) { STATE.tasks = []; }
-    }
-
-    function saveTasks() {
-        localStorage.setItem('tasks', JSON.stringify(STATE.tasks));
-        refreshUI();
-    }
-
     function refreshUI() {
-        if (isDashboard()) { updateStats(); updateCharts(); }
+        if (isDashboard()) {
+            updateStats();
+            updateAIInsights();
+            updateCharts();
+            renderExecutiveWatchlist();
+        }
         else if (isTaskPage()) { renderTasks(); updateProgress(); renderCalendar(); }
     }
 
     // ============================================================
-    // Sidebar & Nav
+    // Executive C-Suite Dashboard Logic
     // ============================================================
-    async function loadSidebar() {
-        try {
-            const res = await fetch('components/sidebar.html');
-            const html = await res.text();
-            if (DOM.sidebarContainer) DOM.sidebarContainer.innerHTML = html;
-        } catch (e) { console.error('Sidebar load failed:', e); }
+    function initDashboard() {
+        if (DOM.dashQuickAddBtn) {
+            DOM.dashQuickAddBtn.addEventListener('click', () => {
+                if (window.ModalsModule) window.ModalsModule.openQuickInbox();
+            });
+        }
+        if (DOM.dashExportPdfBtn) {
+            DOM.dashExportPdfBtn.addEventListener('click', () => {
+                if (window.ExportModule) window.ExportModule.exportToPDF();
+            });
+        }
+        updateStats();
+        updateAIInsights();
+        initCharts();
+        renderExecutiveWatchlist();
     }
-
-    function setupSidebarEvents() {
-        const el = (id) => document.getElementById(id);
-        const on = (id, fn) => { const e = el(id); if (e) e.addEventListener('click', fn); };
-        on('toggleSidebarBtn', toggleSidebar);
-        on('themeToggleBtn', toggleTheme);
-        on('exportPdfBtn', exportToPDF);
-        on('exportExcelBtn', exportToExcel);
-    }
-
-    function highlightActiveNav() {
-        document.querySelectorAll('.nav-item').forEach(i => i.classList.remove('active'));
-        const path = window.location.href.toLowerCase();
-        const navId = path.includes('tasks') ? 'nav-tasks' : 'nav-dashboard';
-        const el = document.getElementById(navId);
-        if (el) el.classList.add('active');
-    }
-
-    function toggleSidebar() {
-        const s = document.getElementById('sidebar');
-        if (s) s.classList.toggle('collapsed');
-        if (DOM.mainContent) DOM.mainContent.classList.toggle('expanded');
-    }
-
-    // ============================================================
-    // Theme
-    // ============================================================
-    function initTheme() {
-        document.documentElement.setAttribute('data-theme', STATE.theme);
-        updateThemeIcon();
-    }
-
-    function toggleTheme() {
-        STATE.theme = STATE.theme === 'dark' ? 'light' : 'dark';
-        localStorage.setItem('theme', STATE.theme);
-        document.documentElement.setAttribute('data-theme', STATE.theme);
-        updateThemeIcon();
-        if (isDashboard()) updateChartsTheme();
-    }
-
-    function updateThemeIcon() {
-        const i = document.querySelector('.theme-btn i');
-        if (i) i.className = STATE.theme === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
-    }
-
-    // ============================================================
-    // Dashboard
-    // ============================================================
-    function initDashboard() { updateStats(); initCharts(); }
 
     function updateStats() {
         if (!DOM.totalTasks) return;
-        const t = STATE.tasks.length,
-              c = STATE.tasks.filter(x => x.status === 'completed').length;
-        DOM.totalTasks.textContent = t;
-        DOM.completedTasks.textContent = c;
-        DOM.pendingTasks.textContent = t - c;
-        DOM.completionRate.textContent = t > 0 ? Math.round((c / t) * 100) + '%' : '0%';
+        const tasks = STATE.tasks;
+        const total = tasks.length;
+        const completed = tasks.filter(x => x.status === 'completed');
+        const pending = tasks.filter(x => x.status === 'pending');
+        const rate = total > 0 ? Math.round((completed.length / total) * 100) : 0;
+
+        DOM.totalTasks.textContent = total;
+        DOM.completedTasks.textContent = completed.length;
+        DOM.pendingTasks.textContent = pending.length;
+        DOM.completionRate.textContent = rate + '%';
+
+        if (DOM.completionProgressFill) DOM.completionProgressFill.style.width = rate + '%';
+
+        // Hours & Subtexts
+        const totalEst = tasks.reduce((sum, t) => sum + (parseFloat(t.estHours) || 0), 0);
+        const compEst = completed.reduce((sum, t) => sum + (parseFloat(t.estHours) || 0), 0);
+        const p0Pending = pending.filter(t => t.priority === 'high' || t.priority === 'P0');
+
+        if (DOM.totalHoursText) DOM.totalHoursText.textContent = `⏱️ ${totalEst} ชม. ประเมินรวม`;
+        if (DOM.completedHoursText) DOM.completedHoursText.textContent = `🎯 สำเร็จแล้ว ${compEst} ชม.`;
+        if (DOM.pendingUrgentText) DOM.pendingUrgentText.textContent = `🔥 P0/ด่วน: ${p0Pending.length} รายการ`;
+
+        // System Health Status Indicator
+        const today = new Date(); today.setHours(0,0,0,0);
+        const overdueCount = pending.filter(t => t.dueDate && new Date(t.dueDate + 'T00:00:00') < today).length;
+
+        if (DOM.sysHealthStatus) {
+            if (overdueCount > 0) {
+                DOM.sysHealthStatus.textContent = 'ATTENTION REQUIRED';
+                DOM.sysHealthStatus.style.color = 'var(--danger)';
+            } else if (rate >= 80) {
+                DOM.sysHealthStatus.textContent = 'EXCELLENT VELOCITY';
+                DOM.sysHealthStatus.style.color = 'var(--success)';
+            } else {
+                DOM.sysHealthStatus.textContent = 'OPTIMAL';
+                DOM.sysHealthStatus.style.color = 'var(--accent-light)';
+            }
+        }
+    }
+
+    function updateAIInsights() {
+        if (!DOM.aiInsightsText) return;
+        const tasks = STATE.tasks;
+        if (tasks.length === 0) {
+            DOM.aiInsightsText.innerHTML = '🤖 <strong>AI Intelligence Analytics:</strong> ระบบยังไม่มีงานที่ถูกบันทึกในขณะนี้ เริ่มต้นกด <strong>"+ เพิ่มงาน"</strong> หรือ <strong>"Ctrl+K"</strong> เพื่อเริ่มการประมวลผลดัชนีองค์กร';
+            if (DOM.aiVelocityScore) DOM.aiVelocityScore.textContent = '100/100';
+            if (DOM.aiRecommendationChips) DOM.aiRecommendationChips.innerHTML = '';
+            return;
+        }
+
+        const completed = tasks.filter(t => t.status === 'completed');
+        const pending = tasks.filter(t => t.status === 'pending');
+        const today = new Date(); today.setHours(0,0,0,0);
+        const overdue = pending.filter(t => t.dueDate && new Date(t.dueDate + 'T00:00:00') < today);
+        const p0Pending = pending.filter(t => t.priority === 'high' || t.priority === 'P0');
+        const rate = Math.round((completed.length / tasks.length) * 100);
+
+        // Velocity Health Score Algorithm
+        let score = 100;
+        score -= (overdue.length * 15);
+        score -= (p0Pending.length * 5);
+        if (rate < 50) score -= 10;
+        score = Math.max(10, Math.min(100, score));
+
+        if (DOM.aiVelocityScore) {
+            DOM.aiVelocityScore.textContent = `${score}/100`;
+            DOM.aiVelocityScore.style.color = score >= 80 ? 'var(--success)' : (score >= 50 ? 'var(--warning)' : 'var(--danger)');
+        }
+
+        // Executive Narrative Generation
+        let analysisStr = `🤖 <strong>Executive Summary:</strong> ระบบวิเคราะห์ภาระงานรวม <strong>${tasks.length} รายการ</strong> สำเร็จแล้ว <strong>${completed.length} รายการ (${rate}%)</strong>`;
+        if (overdue.length > 0) {
+            analysisStr += ` พบงาน <strong>เลยกำหนดส่งสะสม ${overdue.length} รายการ</strong> ที่ต้องเร่งรัดติดตามทันที`;
+        } else if (p0Pending.length > 0) {
+            analysisStr += ` มีงานความสำคัญสูง (P0) อยู่ระหว่างดำเนินการ <strong>${p0Pending.length} รายการ</strong> ควรให้ความสำคัญเป็นอันดับแรก`;
+        } else {
+            analysisStr += ` 🚀 การบริหารจัดการงานอยู่ในเกณฑ์ยอดเยี่ยม ไม่มีงานค้างเกินกำหนด`;
+        }
+
+        DOM.aiInsightsText.innerHTML = analysisStr;
+
+        // Recommendation Chips
+        if (DOM.aiRecommendationChips) {
+            DOM.aiRecommendationChips.innerHTML = '';
+            const chips = [];
+            if (overdue.length > 0) chips.push({ icon: 'fa-exclamation-circle', text: `งานเกินกำหนด: ${overdue.length} รายการ`, type: 'danger' });
+            if (p0Pending.length > 0) chips.push({ icon: 'fa-fire', text: `P0 ด่วนเร่งด่วน: ${p0Pending.length} รายการ`, type: 'warning' });
+            chips.push({ icon: 'fa-check-circle', text: `อัตราสำเร็จ: ${rate}%`, type: 'success' });
+            const totalHours = tasks.reduce((s, t) => s + (parseFloat(t.estHours) || 0), 0);
+            chips.push({ icon: 'fa-clock', text: `รวมเวลาประเมิน: ${totalHours} ชม.`, type: 'accent' });
+
+            chips.forEach(chip => {
+                const span = document.createElement('span');
+                span.className = `ai-chip ai-chip-${chip.type}`;
+                span.innerHTML = `<i class="fas ${chip.icon}"></i> ${chip.text}`;
+                DOM.aiRecommendationChips.appendChild(span);
+            });
+        }
     }
 
     function getChartColors() {
-        const d = STATE.theme === 'dark';
+        const d = (window.ThemeModule ? window.ThemeModule.getTheme() : 'dark') === 'dark';
         return { text: d ? '#a0a0cc' : '#5a5a7a', grid: d ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.06)' };
     }
 
     function initCharts() {
-        if (!window.Chart) return;
+        if (!window.Chart || !DOM.statusChartCanvas) return;
         const c = getChartColors();
 
         STATE.charts.status = new Chart(DOM.statusChartCanvas.getContext('2d'), {
@@ -184,9 +244,8 @@
                 datasets: [{ data: [0, 0], backgroundColor: ['#00cec9', '#fdcb6e'], borderWidth: 0, hoverOffset: 8 }]
             },
             options: {
-                responsive: true, maintainAspectRatio: true, cutout: '70%',
+                responsive: true, maintainAspectRatio: true, cutout: '72%',
                 plugins: {
-                    title: { display: true, text: 'สถานะงาน', color: c.text, font: { size: 14, family: 'Inter', weight: '600' } },
                     legend: { position: 'bottom', labels: { color: c.text, font: { family: 'Inter', size: 12 }, padding: 16, usePointStyle: true, pointStyle: 'circle' } }
                 }
             }
@@ -194,19 +253,39 @@
 
         STATE.charts.category = new Chart(DOM.categoryChartCanvas.getContext('2d'), {
             type: 'bar',
-            data: { labels: [], datasets: [{ label: 'จำนวนงาน', data: [], backgroundColor: 'rgba(108,92,231,0.7)', borderRadius: 8, borderSkipped: false, barThickness: 32 }] },
+            data: { labels: [], datasets: [{ label: 'จำนวนงาน', data: [], backgroundColor: 'rgba(108, 92, 231, 0.8)', borderRadius: 8, borderSkipped: false, barThickness: 28 }] },
             options: {
                 responsive: true, maintainAspectRatio: true,
-                plugins: {
-                    title: { display: true, text: 'งานตามหมวดหมู่', color: c.text, font: { size: 14, family: 'Inter', weight: '600' } },
-                    legend: { display: false }
-                },
+                plugins: { legend: { display: false } },
                 scales: {
-                    y: { beginAtZero: true, ticks: { color: c.text }, grid: { color: c.grid } },
+                    y: { beginAtZero: true, ticks: { color: c.text, precision: 0 }, grid: { color: c.grid } },
                     x: { ticks: { color: c.text }, grid: { display: false } }
                 }
             }
         });
+
+        if (DOM.priorityChartCanvas) {
+            STATE.charts.priority = new Chart(DOM.priorityChartCanvas.getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: ['🔴 P0 - สำคัญด่วน', '🟡 P1 - ปานกลาง', '🟢 P2 - ทั่วไป'],
+                    datasets: [{
+                        label: 'จำนวนงาน',
+                        data: [0, 0, 0],
+                        backgroundColor: ['rgba(255, 107, 107, 0.85)', 'rgba(253, 203, 110, 0.85)', 'rgba(0, 206, 201, 0.85)'],
+                        borderRadius: 8, borderSkipped: false, barThickness: 36
+                    }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { beginAtZero: true, ticks: { color: c.text, precision: 0 }, grid: { color: c.grid } },
+                        x: { ticks: { color: c.text }, grid: { display: false } }
+                    }
+                }
+            });
+        }
 
         updateCharts();
     }
@@ -216,29 +295,73 @@
         const comp = STATE.tasks.filter(t => t.status === 'completed').length;
         STATE.charts.status.data.datasets[0].data = [comp, STATE.tasks.length - comp];
         STATE.charts.status.update();
+
+        // Category Chart
         const cats = {};
-        STATE.tasks.forEach(t => { cats[t.category] = (cats[t.category] || 0) + 1; });
+        STATE.tasks.forEach(t => { cats[t.category || 'งาน'] = (cats[t.category || 'งาน'] || 0) + 1; });
         STATE.charts.category.data.labels = Object.keys(cats);
         STATE.charts.category.data.datasets[0].data = Object.values(cats);
         STATE.charts.category.update();
+
+        // Priority Chart
+        if (STATE.charts.priority) {
+            const p0 = STATE.tasks.filter(t => t.priority === 'high' || t.priority === 'P0').length;
+            const p1 = STATE.tasks.filter(t => !t.priority || t.priority === 'medium' || t.priority === 'P1').length;
+            const p2 = STATE.tasks.filter(t => t.priority === 'low' || t.priority === 'P2').length;
+            STATE.charts.priority.data.datasets[0].data = [p0, p1, p2];
+            STATE.charts.priority.update();
+        }
     }
 
-    function updateChartsTheme() {
-        const c = getChartColors();
-        [STATE.charts.status, STATE.charts.category].forEach(ch => {
-            if (!ch) return;
-            ch.options.plugins.title.color = c.text;
-            if (ch.options.plugins.legend) ch.options.plugins.legend.labels.color = c.text;
-            if (ch.options.scales) {
-                ['x', 'y'].forEach(a => {
-                    if (ch.options.scales[a]) {
-                        ch.options.scales[a].ticks.color = c.text;
-                        if (ch.options.scales[a].grid) ch.options.scales[a].grid.color = c.grid;
-                    }
-                });
-            }
-            ch.update();
+    function renderExecutiveWatchlist() {
+        if (!DOM.executiveWatchlist) return;
+        const pending = STATE.tasks.filter(t => t.status === 'pending');
+        const today = new Date(); today.setHours(0,0,0,0);
+
+        // Sort: overdue first, then P0, then soonest due
+        const urgentTasks = pending.sort((a, b) => {
+            const isOverdueA = a.dueDate && new Date(a.dueDate + 'T00:00:00') < today;
+            const isOverdueB = b.dueDate && new Date(b.dueDate + 'T00:00:00') < today;
+            if (isOverdueA && !isOverdueB) return -1;
+            if (!isOverdueA && isOverdueB) return 1;
+            if ((a.priority === 'high' || a.priority === 'P0') && (b.priority !== 'high' && b.priority !== 'P0')) return -1;
+            if ((a.priority !== 'high' && a.priority !== 'P0') && (b.priority === 'high' || b.priority === 'P0')) return 1;
+            return (a.dueDate || '9999-12-31').localeCompare(b.dueDate || '9999-12-31');
+        }).slice(0, 4);
+
+        if (urgentTasks.length === 0) {
+            DOM.executiveWatchlist.innerHTML = `<div class="empty-watchlist">✨ ยินดีด้วย! ไม่พบรายการงานค้างสะสมหรือเร่งด่วนในขณะนี้ (All Clean)</div>`;
+            return;
+        }
+
+        let html = `<ul class="watchlist-list">`;
+        urgentTasks.forEach(task => {
+            const isOverdue = task.dueDate && new Date(task.dueDate + 'T00:00:00') < today;
+            const prioBadge = (task.priority === 'high' || task.priority === 'P0')
+                ? `<span class="badge priority-high">🔴 P0 ด่วน</span>`
+                : `<span class="badge priority-medium">🟡 P1</span>`;
+            const dateBadge = task.dueDate 
+                ? (isOverdue ? `<span class="due-badge overdue">⚠️ เลยกำหนด (${task.dueDate})</span>` : `<span class="due-badge">📅 ${task.dueDate}</span>`)
+                : `<span class="due-badge">📌 ไม่ระบุวัน</span>`;
+
+            html += `
+                <li class="watchlist-item ${isOverdue ? 'item-overdue' : ''}">
+                    <div class="watchlist-item-main">
+                        <strong class="watchlist-title">${escapeHTML(task.text)}</strong>
+                        <div class="watchlist-meta">
+                            <span class="badge badge-cat">${escapeHTML(task.category || 'งาน')}</span>
+                            ${prioBadge}
+                            ${dateBadge}
+                        </div>
+                    </div>
+                    <button class="btn btn-secondary btn-sm" onclick="if(window.ModalsModule) window.ModalsModule.openEdit(window.getTaskById('${task.id}'))">
+                        <i class="fas fa-edit"></i> จัดการ
+                    </button>
+                </li>
+            `;
         });
+        html += `</ul>`;
+        DOM.executiveWatchlist.innerHTML = html;
     }
 
     // ============================================================
@@ -256,9 +379,6 @@
         if (DOM.taskInput) DOM.taskInput.addEventListener('keypress', e => { if (e.key === 'Enter') addTask(); });
     }
 
-    // ============================================================
-    // Search
-    // ============================================================
     function setupSearchEvents() {
         if (!DOM.searchInput) return;
         DOM.searchInput.addEventListener('input', (e) => {
@@ -276,9 +396,6 @@
         }
     }
 
-    // ============================================================
-    // Filters
-    // ============================================================
     function setupFilterEvents() {
         const btns = document.querySelectorAll('.filter-btn');
         btns.forEach(btn => {
@@ -291,9 +408,6 @@
         });
     }
 
-    // ============================================================
-    // View Toggle (List / Calendar)
-    // ============================================================
     function setupViewToggle() {
         if (DOM.listViewBtn) {
             DOM.listViewBtn.addEventListener('click', () => {
@@ -316,9 +430,6 @@
         }
     }
 
-    // ============================================================
-    // Progress Bar
-    // ============================================================
     function updateProgress() {
         if (!DOM.progressFill) return;
         const total = STATE.tasks.length;
@@ -353,120 +464,68 @@
     }
 
     // ============================================================
-    // CRUD
+    // CRUD Operations (Strictly via StorageAdapter)
     // ============================================================
-    function addTask() {
+    async function addTask() {
         const text = DOM.taskInput.value.trim();
-        if (!text) return;
-        STATE.tasks.push({
-            id: Date.now().toString(), text,
-            category: DOM.taskCategory.value,
-            dueDate: DOM.taskDueDate.value,
-            priority: DOM.taskPriority.value,
+        if (!text || !window.storageAdapter) return;
+
+        // Smart date: auto-detect if user didn't set a date manually
+        let dueDate = DOM.taskDueDate ? DOM.taskDueDate.value : '';
+        let smartHint = '';
+        if (!dueDate && window.SmartDateParser) {
+            const parsed = window.SmartDateParser.parse(text);
+            if (parsed) {
+                dueDate = parsed.date;
+                smartHint = parsed.label;
+            }
+        }
+        
+        const newTask = {
+            id: Date.now().toString(),
+            text,
+            category: DOM.taskCategory ? DOM.taskCategory.value : 'งาน',
+            dueDate,
+            estHours: DOM.taskEstHours ? parseFloat(DOM.taskEstHours.value) || 0 : 0,
+            priority: DOM.taskPriority ? DOM.taskPriority.value : 'medium',
             status: 'pending',
             createdAt: new Date().toISOString()
-        });
-        saveTasks();
+        };
+
+        await window.storageAdapter.addTask(newTask);
+
         DOM.taskInput.value = '';
+        if (DOM.taskDueDate) DOM.taskDueDate.value = '';
+        if (DOM.taskEstHours) DOM.taskEstHours.value = '';
         DOM.taskInput.focus();
+        const msg = smartHint
+            ? `⚡ เพิ่มงานเรียบร้อย! 📅 ตั้งวันที่อัตโนมัติ: ${smartHint} (${dueDate})`
+            : '⚡ เพิ่มงานเรียบร้อยแล้ว!';
+        if (window.ToastModule) window.ToastModule.show(msg);
     }
 
-    function deleteTask(id) {
-        if (!confirm('ต้องการลบงานนี้?')) return;
-        STATE.tasks = STATE.tasks.filter(t => t.id !== id);
-        saveTasks();
+    async function deleteTask(id) {
+        if (!confirm('ต้องการลบงานนี้?') || !window.storageAdapter) return;
+        await window.storageAdapter.deleteTask(id);
+        if (window.ToastModule) window.ToastModule.show('🗑️ ลบงานเรียบร้อยแล้ว');
     }
 
-    function toggleStatus(id) {
+    async function toggleStatus(id) {
         const t = STATE.tasks.find(t => t.id === id);
-        if (t) { t.status = t.status === 'completed' ? 'pending' : 'completed'; saveTasks(); }
+        if (t && window.storageAdapter) {
+            const nextStatus = t.status === 'completed' ? 'pending' : 'completed';
+            await window.storageAdapter.updateTask(id, { status: nextStatus });
+        }
     }
 
-    // ============================================================
-    // Edit Task (Modal)
-    // ============================================================
-    function createEditModal() {
-        if (document.getElementById('editModal')) return;
-        const modal = document.createElement('div');
-        modal.id = 'editModal';
-        modal.className = 'modal-overlay';
-        modal.innerHTML = `
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h3>✏️ แก้ไขงาน</h3>
-                    <button class="modal-close" id="closeModal">&times;</button>
-                </div>
-                <div class="modal-body">
-                    <label>ชื่องาน</label>
-                    <input type="text" id="editText">
-                    <label>หมวดหมู่</label>
-                    <select id="editCategory">
-                        <option value="งาน">🏢 งาน</option>
-                        <option value="ส่วนตัว">👤 ส่วนตัว</option>
-                        <option value="การเรียน">📚 การบ้าน</option>
-                        <option value="อื่นๆ">📌 อื่นๆ</option>
-                    </select>
-                    <label>วันครบกำหนด</label>
-                    <input type="date" id="editDueDate">
-                    <label>ความสำคัญ</label>
-                    <select id="editPriority">
-                        <option value="low">🟢 ต่ำ</option>
-                        <option value="medium">🟡 ปานกลาง</option>
-                        <option value="high">🔴 สูง</option>
-                    </select>
-                </div>
-                <div class="modal-footer">
-                    <button id="cancelEdit" class="modal-btn-cancel">ยกเลิก</button>
-                    <button id="saveEdit" class="modal-btn-save">💾 บันทึก</button>
-                </div>
-            </div>`;
-        document.body.appendChild(modal);
-
-        document.getElementById('closeModal').addEventListener('click', closeModal);
-        document.getElementById('cancelEdit').addEventListener('click', closeModal);
-        document.getElementById('saveEdit').addEventListener('click', saveEdit);
-        modal.addEventListener('click', e => { if (e.target === modal) closeModal(); });
-    }
-
-    function openEditModal(id) {
-        const task = STATE.tasks.find(t => t.id === id);
-        if (!task) return;
-        STATE.editingId = id;
-        document.getElementById('editText').value = task.text;
-        document.getElementById('editCategory').value = task.category;
-        document.getElementById('editDueDate').value = task.dueDate || '';
-        document.getElementById('editPriority').value = task.priority;
-        document.getElementById('editModal').classList.add('show');
-    }
-
-    function closeModal() {
-        STATE.editingId = null;
-        document.getElementById('editModal').classList.remove('show');
-    }
-
-    function saveEdit() {
-        const task = STATE.tasks.find(t => t.id === STATE.editingId);
-        if (!task) return;
-        task.text = document.getElementById('editText').value.trim() || task.text;
-        task.category = document.getElementById('editCategory').value;
-        task.dueDate = document.getElementById('editDueDate').value;
-        task.priority = document.getElementById('editPriority').value;
-        saveTasks();
-        closeModal();
-    }
-
-    // ============================================================
-    // Render Task List (with Drag & Drop)
-    // ============================================================
     function getFilteredTasks() {
         return STATE.tasks.filter(task => {
-            // Filter
             if (STATE.filter === 'pending' && task.status !== 'pending') return false;
             if (STATE.filter === 'completed' && task.status !== 'completed') return false;
-            if (STATE.filter === 'high' && task.priority !== 'high') return false;
-            // Search
+            if (STATE.filter === 'high' && task.priority !== 'high' && task.priority !== 'P0') return false;
+            
             if (STATE.search && !task.text.toLowerCase().includes(STATE.search) &&
-                !task.category.toLowerCase().includes(STATE.search)) return false;
+                !(task.category || '').toLowerCase().includes(STATE.search)) return false;
             return true;
         });
     }
@@ -475,10 +534,11 @@
         if (!DOM.taskList) return;
         DOM.taskList.innerHTML = '';
         const filtered = getFilteredTasks();
+        const canDrag = STATE.filter === 'all' && !STATE.search;
 
         if (filtered.length === 0) {
             const empty = document.createElement('li');
-            empty.style.cssText = 'text-align:center;color:var(--text-muted);border-left-color:var(--border);justify-content:center;grid-template-columns:1fr;cursor:default;';
+            empty.className = 'task-empty-state';
             empty.textContent = STATE.search ? '🔍 ไม่พบงานที่ค้นหา' : (STATE.filter === 'all' ? 'ยังไม่มีงาน กดเพิ่มงานได้เลย!' : '🔍 ไม่พบงานที่ตรงตามตัวกรอง');
             DOM.taskList.appendChild(empty);
             return;
@@ -486,22 +546,26 @@
 
         filtered.forEach(task => {
             const li = document.createElement('li');
-            li.className = `${task.priority}-priority`;
-            li.setAttribute('draggable', 'true');
+            li.className = `${task.priority || 'medium'}-priority`;
             li.dataset.id = task.id;
 
-            // Due date class
+            if (canDrag) {
+                li.setAttribute('draggable', 'true');
+                li.addEventListener('dragstart', handleDragStart);
+                li.addEventListener('dragend', handleDragEnd);
+                li.addEventListener('dragover', handleDragOver);
+                li.addEventListener('drop', handleDrop);
+                li.addEventListener('dragleave', handleDragLeave);
+            } else {
+                li.setAttribute('draggable', 'false');
+                li.classList.add('not-draggable');
+            }
+
             const dueStatus = getDueStatus(task);
             if (dueStatus === 'overdue') li.classList.add('due-overdue');
             else if (dueStatus === 'today') li.classList.add('due-today');
             else if (dueStatus === 'soon') li.classList.add('due-soon');
 
-            // Drag events
-            li.addEventListener('dragstart', handleDragStart);
-            li.addEventListener('dragend', handleDragEnd);
-            li.addEventListener('dragover', handleDragOver);
-            li.addEventListener('drop', handleDrop);
-            li.addEventListener('dragleave', handleDragLeave);
 
             // Checkbox
             const checkbox = document.createElement('input');
@@ -524,7 +588,7 @@
 
             const catSpan = document.createElement('span');
             catSpan.className = 'task-category';
-            catSpan.textContent = task.category;
+            catSpan.textContent = task.category || 'งาน';
             metaDiv.appendChild(catSpan);
 
             if (task.dueDate) {
@@ -532,6 +596,13 @@
                 dateSpan.className = 'task-due-date';
                 dateSpan.textContent = '📅 ' + task.dueDate;
                 metaDiv.appendChild(dateSpan);
+            }
+
+            if (task.estHours) {
+                const hoursSpan = document.createElement('span');
+                hoursSpan.className = 'task-due-date';
+                hoursSpan.textContent = '⏱️ ' + task.estHours + ' ชม.';
+                metaDiv.appendChild(hoursSpan);
             }
 
             if (dueStatus) metaDiv.appendChild(getDueBadge(dueStatus));
@@ -542,7 +613,9 @@
             // Status
             const statusSpan = document.createElement('span');
             statusSpan.className = `task-status ${task.status === 'completed' ? 'status-completed' : 'status-pending'}`;
-            statusSpan.textContent = task.status === 'completed' ? '✅ เสร็จ' : '⏳ รอ';
+            statusSpan.innerHTML = task.status === 'completed' 
+                ? '<i class="fas fa-check-circle"></i> เสร็จแล้ว' 
+                : '<i class="fas fa-clock"></i> รอดำเนินการ';
 
             // Actions
             const actionsDiv = document.createElement('div');
@@ -550,15 +623,23 @@
 
             const editBtn = document.createElement('button');
             editBtn.className = 'edit-btn';
-            editBtn.textContent = '✏️';
-            editBtn.title = 'แก้ไข';
-            editBtn.addEventListener('click', () => openEditModal(task.id));
+            editBtn.innerHTML = '<i class="fas fa-pen"></i>';
+            editBtn.title = 'แก้ไขงาน';
+            editBtn.setAttribute('aria-label', 'แก้ไขงาน');
+            editBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (window.ModalsModule) window.ModalsModule.openEdit(task);
+            });
 
             const deleteBtn = document.createElement('button');
             deleteBtn.className = 'delete-btn';
-            deleteBtn.textContent = '🗑️';
-            deleteBtn.title = 'ลบ';
-            deleteBtn.addEventListener('click', () => deleteTask(task.id));
+            deleteBtn.innerHTML = '<i class="fas fa-trash-alt"></i>';
+            deleteBtn.title = 'ลบงาน';
+            deleteBtn.setAttribute('aria-label', 'ลบงาน');
+            deleteBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                deleteTask(task.id);
+            });
 
             actionsDiv.appendChild(editBtn);
             actionsDiv.appendChild(deleteBtn);
@@ -575,6 +656,7 @@
     // Drag & Drop
     // ============================================================
     function handleDragStart(e) {
+        if (STATE.filter !== 'all' || STATE.search) return;
         STATE.draggedId = e.currentTarget.dataset.id;
         e.currentTarget.classList.add('dragging');
         e.dataTransfer.effectAllowed = 'move';
@@ -587,6 +669,7 @@
     }
 
     function handleDragOver(e) {
+        if (STATE.filter !== 'all' || STATE.search) return;
         e.preventDefault();
         e.dataTransfer.dropEffect = 'move';
         const target = e.currentTarget;
@@ -599,8 +682,9 @@
         e.currentTarget.classList.remove('drag-over');
     }
 
-    function handleDrop(e) {
+    async function handleDrop(e) {
         e.preventDefault();
+        if (STATE.filter !== 'all' || STATE.search) return;
         const target = e.currentTarget;
         target.classList.remove('drag-over');
         const targetId = target.dataset.id;
@@ -612,7 +696,10 @@
 
         const [moved] = STATE.tasks.splice(fromIdx, 1);
         STATE.tasks.splice(toIdx, 0, moved);
-        saveTasks();
+
+        if (window.storageAdapter) {
+            await window.storageAdapter.saveTasks(STATE.tasks);
+        }
     }
 
     // ============================================================
@@ -635,12 +722,10 @@
         const daysInPrev = new Date(STATE.calYear, STATE.calMonth, 0).getDate();
         const today = new Date(); today.setHours(0, 0, 0, 0);
 
-        // Previous month padding
         for (let i = firstDay - 1; i >= 0; i--) {
             DOM.calDays.appendChild(createCalDay(daysInPrev - i, true, null));
         }
 
-        // Current month
         for (let d = 1; d <= daysInMonth; d++) {
             const dateStr = `${STATE.calYear}-${String(STATE.calMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
             const isToday = new Date(dateStr + 'T00:00:00').getTime() === today.getTime();
@@ -648,7 +733,6 @@
             DOM.calDays.appendChild(createCalDay(d, false, tasksOnDay, isToday));
         }
 
-        // Next month padding
         const totalCells = DOM.calDays.children.length;
         const remaining = (7 - (totalCells % 7)) % 7;
         for (let i = 1; i <= remaining; i++) {
@@ -671,11 +755,13 @@
             const maxShow = 3;
             tasks.slice(0, maxShow).forEach(t => {
                 const chip = document.createElement('div');
-                chip.className = `cal-task priority-${t.priority}`;
+                chip.className = `cal-task priority-${t.priority || 'medium'}`;
                 if (t.status === 'completed') chip.classList.add('completed');
                 chip.textContent = t.text;
                 chip.title = t.text;
-                chip.addEventListener('click', () => openEditModal(t.id));
+                chip.addEventListener('click', () => {
+                    if (window.ModalsModule) window.ModalsModule.openEdit(t);
+                });
                 div.appendChild(chip);
             });
             if (tasks.length > maxShow) {
@@ -689,41 +775,7 @@
         return div;
     }
 
-    // ============================================================
-    // Export
-    // ============================================================
-    function exportToPDF() {
-        const el = isDashboard() ? document.querySelector('.container') : DOM.taskList || document.querySelector('.container');
-        if (!window.html2pdf) return alert('PDF library not loaded');
-        window.html2pdf().set({
-            margin: 1, filename: isDashboard() ? 'dashboard.pdf' : 'tasks.pdf',
-            image: { type: 'jpeg', quality: 0.98 }, html2canvas: { scale: 2 },
-            jsPDF: { unit: 'in', format: 'a4', orientation: 'portrait' }
-        }).from(el).save();
-    }
-
-    function exportToExcel() {
-        if (!window.XLSX) return alert('Excel library not loaded');
-        const ws = XLSX.utils.aoa_to_sheet([
-            [isDashboard() ? 'รายงานแดชบอร์ด' : 'รายการสิ่งที่ต้องทำ'],
-            ['#', 'รายการ', 'หมวดหมู่', 'วันครบกำหนด', 'ความสำคัญ', 'สถานะ'],
-            ...STATE.tasks.map((t, i) => [i + 1, t.text, t.category, t.dueDate, t.priority, t.status === 'completed' ? 'เสร็จ' : 'รอ'])
-        ]);
-        const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, 'รายงาน');
-        XLSX.writeFile(wb, isDashboard() ? 'dashboard.xlsx' : 'tasks.xlsx');
-    }
-
-    // ============================================================
-    // Auto Refresh
-    // ============================================================
-    function startAutoRefresh() {
-        STATE.refreshInterval = setInterval(() => { loadState(); refreshUI(); }, 30000);
-    }
-
-    // ============================================================
     // Boot
-    // ============================================================
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
     else init();
 })();

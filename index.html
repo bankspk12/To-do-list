@@ -3,53 +3,154 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>แดชบอร์ด - Todo App</title>
-    <meta name="description" content="Todo App Dashboard - ระบบจัดการงานอัจฉริยะ">
+    <title>Tasknest - แดชบอร์ดบริหารงานระดับบริหาร</title>
+    <meta name="description" content="Tasknest - Executive Task Dashboard & Intelligent Analytics System">
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link rel="stylesheet" href="css/styles.css">
+
+    <!-- Firebase SDK (Compat Version for Vanilla JS) -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
 </head>
 <body>
     <div id="sidebar-container"></div>
 
     <div class="main-content" id="mainContent">
         <div class="container">
-            <h1>📊 แดชบอร์ด</h1>
-            
-            <div class="dashboard">
-                <div class="stat-card">
-                    <div class="stat-label">งานทั้งหมด</div>
-                    <div class="stat-value" id="totalTasks">0</div>
+            <!-- Executive Hero Command Banner -->
+            <div class="executive-header">
+                <div class="exec-title-area">
+                    <div class="exec-badge">
+                        <span class="live-pulse"></span> SYSTEM HEALTH: <span id="sysHealthStatus">OPTIMAL</span>
+                    </div>
+                    <h1>📊 Tasknest Executive Command Center</h1>
+                    <p class="exec-subtitle">ศูนย์วิเคราะห์และบริหารงานเชิงกลยุทธ์ระดับบริหาร (Real-time AI Analytics)</p>
                 </div>
-                <div class="stat-card">
-                    <div class="stat-label">เสร็จแล้ว</div>
-                    <div class="stat-value" id="completedTasks">0</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-label">รอดำเนินการ</div>
-                    <div class="stat-value" id="pendingTasks">0</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-label">อัตราสำเร็จ</div>
-                    <div class="stat-value" id="completionRate">0%</div>
+                <div class="exec-actions">
+                    <button class="btn btn-primary" id="dashQuickAddBtn" title="จดด่วน">
+                        <i class="fas fa-bolt"></i> จดงานด่วน <kbd>Ctrl+K</kbd>
+                    </button>
+                    <button class="btn btn-secondary" id="dashExportPdfBtn" title="Export Executive Report">
+                        <i class="fas fa-file-pdf"></i> สรุปรายงาน PDF
+                    </button>
                 </div>
             </div>
 
+            <!-- C-Suite Executive KPI Scorecards -->
+            <div class="dashboard">
+                <div class="stat-card stat-card-primary">
+                    <div class="stat-card-icon"><i class="fas fa-layer-group"></i></div>
+                    <div class="stat-info">
+                        <div class="stat-label">งานทั้งหมดในระบบ</div>
+                        <div class="stat-value" id="totalTasks">0</div>
+                        <div class="stat-subtext" id="totalHoursText">⏱️ 0 ชม. ประมาณการ</div>
+                    </div>
+                </div>
+
+                <div class="stat-card stat-card-success">
+                    <div class="stat-card-icon"><i class="fas fa-check-circle"></i></div>
+                    <div class="stat-info">
+                        <div class="stat-label">เสร็จสิ้นแล้ว</div>
+                        <div class="stat-value" id="completedTasks">0</div>
+                        <div class="stat-subtext" id="completedHoursText">🎯 สำเร็จตามเป้าหมาย</div>
+                    </div>
+                </div>
+
+                <div class="stat-card stat-card-warning">
+                    <div class="stat-card-icon"><i class="fas fa-clock"></i></div>
+                    <div class="stat-info">
+                        <div class="stat-label">รอดำเนินการ</div>
+                        <div class="stat-value" id="pendingTasks">0</div>
+                        <div class="stat-subtext" id="pendingUrgentText">🔥 P0/ด่วน: 0 รายการ</div>
+                    </div>
+                </div>
+
+                <div class="stat-card stat-card-accent">
+                    <div class="stat-card-icon"><i class="fas fa-chart-line"></i></div>
+                    <div class="stat-info">
+                        <div class="stat-label">ดัชนีความสำเร็จ (Velocity)</div>
+                        <div class="stat-value" id="completionRate">0%</div>
+                        <div class="stat-progress-bar">
+                            <div class="stat-progress-fill" id="completionProgressFill" style="width: 0%"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Executive AI Insights & Health Engine Widget -->
+            <div class="ai-insights-card">
+                <div class="ai-insights-header">
+                    <div class="ai-title">
+                        <i class="fas fa-brain ai-icon"></i>
+                        <span>Tasknest AI Intelligence Analytics</span>
+                        <span class="ai-tag">AUTOMATED AI INSIGHTS</span>
+                    </div>
+                    <div class="ai-velocity-score">
+                        <span>Velocity Health Score:</span>
+                        <strong id="aiVelocityScore">100/100</strong>
+                    </div>
+                </div>
+                <div class="ai-insights-body" id="aiInsightsText">
+                    กำลังวิเคราะห์ภาระงานและประมวลผลดัชนีความเสี่ยง...
+                </div>
+                <div class="ai-recommendation-chips" id="aiRecommendationChips"></div>
+            </div>
+
+            <!-- Executive Analytics Charts Suite -->
             <div class="charts-container">
                 <div class="chart-card">
-                    <canvas id="statusChart"></canvas>
+                    <div class="chart-card-header">
+                        <h3><i class="fas fa-chart-pie" style="color:var(--accent-light);"></i> สัดส่วนสถานะงาน (Status Distribution)</h3>
+                    </div>
+                    <div class="chart-canvas-wrapper">
+                        <canvas id="statusChart"></canvas>
+                    </div>
                 </div>
+
                 <div class="chart-card">
-                    <canvas id="categoryChart"></canvas>
+                    <div class="chart-card-header">
+                        <h3><i class="fas fa-chart-bar" style="color:var(--success);"></i> ภาระงานตามหมวดหมู่ (Category Workload)</h3>
+                    </div>
+                    <div class="chart-canvas-wrapper">
+                        <canvas id="categoryChart"></canvas>
+                    </div>
                 </div>
+
+                <div class="chart-card chart-card-full">
+                    <div class="chart-card-header">
+                        <h3><i class="fas fa-fire" style="color:var(--danger);"></i> การกระจายงานตามระดับความสำคัญ (Priority Heatmap)</h3>
+                    </div>
+                    <div class="chart-canvas-wrapper" style="height: 220px;">
+                        <canvas id="priorityChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Executive Watchlist (Urgent & Risk Items) -->
+            <div class="executive-watchlist-card">
+                <div class="watchlist-header">
+                    <h3><i class="fas fa-shield-alt" style="color:var(--warning);"></i> รายการต้องติดตามพิเศษระดับบริหาร (Executive Priority Watchlist)</h3>
+                    <a href="tasks.html" class="btn btn-secondary btn-sm">จัดการงานทั้งหมด <i class="fas fa-arrow-right"></i></a>
+                </div>
+                <div id="executiveWatchlist"></div>
             </div>
         </div>
     </div>
 
+    <!-- Core App Modules -->
+    <script src="js/firebase-config.js"></script>
+    <script src="js/storage-adapter.js"></script>
+    <script src="js/modules/theme.js"></script>
+    <script src="js/modules/toast.js"></script>
+    <script src="js/modules/export.js"></script>
+    <script src="js/modules/sidebar.js"></script>
+    <script src="js/modules/smart-date.js"></script>
+    <script src="js/modules/modals.js"></script>
     <script src="js/main.js"></script>
 </body>
 </html>
