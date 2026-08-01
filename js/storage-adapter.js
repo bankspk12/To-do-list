@@ -9,8 +9,28 @@
             this.listeners = [];
             this.db = null;
             this.isFirebaseReady = false;
+            this.unsubscribeListener = null;
+            this.workspaceId = this.getWorkspaceId();
             // Store initialization promise to prevent race condition
             this.readyPromise = this.initFirebase();
+        }
+
+        getWorkspaceId() {
+            return (window.AuthModule && typeof window.AuthModule.getWorkspaceId === 'function')
+                ? window.AuthModule.getWorkspaceId()
+                : 'default_public_workspace';
+        }
+
+        setWorkspace(wsId) {
+            this.workspaceId = wsId;
+            if (this.unsubscribeListener) {
+                this.unsubscribeListener();
+                this.unsubscribeListener = null;
+            }
+            if (this.isFirebaseReady) {
+                this.listenFirestore();
+            }
+            this.getTasks().then(tasks => this.notifyListeners(tasks));
         }
 
         async initFirebase() {
@@ -68,36 +88,49 @@
 
         listenFirestore() {
             if (!this.db) return;
-            this.db.collection('tasks').onSnapshot((snapshot) => {
-                const tasks = [];
-                snapshot.forEach(doc => {
-                    tasks.push({ id: doc.id, ...doc.data() });
+            const currentWs = this.getWorkspaceId();
+
+            if (this.unsubscribeListener) {
+                this.unsubscribeListener();
+            }
+
+            this.unsubscribeListener = this.db.collection('tasks')
+                .where('workspaceId', '==', currentWs)
+                .onSnapshot((snapshot) => {
+                    const tasks = [];
+                    snapshot.forEach(doc => {
+                        tasks.push({ id: doc.id, ...doc.data() });
+                    });
+                    const sorted = this.sortTasks(tasks);
+                    localStorage.setItem(`tasks_${currentWs}`, JSON.stringify(sorted));
+                    this.notifyListeners(sorted);
+                }, (error) => {
+                    console.error('Firestore listener error:', error);
                 });
-                const sorted = this.sortTasks(tasks);
-                localStorage.setItem('tasks', JSON.stringify(sorted));
-                this.notifyListeners(sorted);
-            }, (error) => {
-                console.error('Firestore listener error:', error);
-            });
         }
 
         // --- Data Access Methods ---
         async getTasks() {
             await this.ensureReady();
+            const currentWs = this.getWorkspaceId();
             let tasks = [];
+
             if (this.isFirebaseReady && this.db) {
                 try {
-                    const snapshot = await this.db.collection('tasks').get();
+                    const snapshot = await this.db.collection('tasks')
+                        .where('workspaceId', '==', currentWs)
+                        .get();
                     snapshot.forEach(doc => tasks.push({ id: doc.id, ...doc.data() }));
                     tasks = this.sortTasks(tasks);
-                    localStorage.setItem('tasks', JSON.stringify(tasks));
+                    localStorage.setItem(`tasks_${currentWs}`, JSON.stringify(tasks));
                     return tasks;
                 } catch (e) {
                     console.error('Error fetching from Firestore, returning local:', e);
                 }
             }
+
             try {
-                tasks = JSON.parse(localStorage.getItem('tasks') || '[]');
+                tasks = JSON.parse(localStorage.getItem(`tasks_${currentWs}`) || '[]');
                 return this.sortTasks(tasks);
             } catch (e) {
                 return [];
@@ -106,9 +139,15 @@
 
         async saveTasks(tasks) {
             await this.ensureReady();
-            // Assign order index to maintain drag & drop sequence
-            const orderedTasks = tasks.map((task, idx) => ({ ...task, order: idx }));
-            localStorage.setItem('tasks', JSON.stringify(orderedTasks));
+            const currentWs = this.getWorkspaceId();
+            // Assign order index and workspaceId
+            const orderedTasks = tasks.map((task, idx) => ({
+                ...task,
+                order: idx,
+                workspaceId: currentWs
+            }));
+
+            localStorage.setItem(`tasks_${currentWs}`, JSON.stringify(orderedTasks));
 
             if (this.isFirebaseReady && this.db) {
                 const batch = this.db.batch();
@@ -124,8 +163,9 @@
         async addTask(task) {
             await this.ensureReady();
             const tasks = await this.getTasks();
-            const newTask = { ...task, order: 0 };
-            
+            const currentWs = this.getWorkspaceId();
+            const newTask = { ...task, order: 0, workspaceId: currentWs };
+
             // Shift existing tasks order
             const updated = [newTask, ...tasks.map(t => ({ ...t, order: (t.order || 0) + 1 }))];
             await this.saveTasks(updated);
@@ -135,13 +175,14 @@
         async updateTask(id, updates) {
             await this.ensureReady();
             const tasks = await this.getTasks();
+            const currentWs = this.getWorkspaceId();
             const idx = tasks.findIndex(t => t.id === id);
             if (idx !== -1) {
-                tasks[idx] = { ...tasks[idx], ...updates, updatedAt: new Date().toISOString() };
-                localStorage.setItem('tasks', JSON.stringify(tasks));
+                tasks[idx] = { ...tasks[idx], ...updates, updatedAt: new Date().toISOString(), workspaceId: currentWs };
+                localStorage.setItem(`tasks_${currentWs}`, JSON.stringify(tasks));
 
                 if (this.isFirebaseReady && this.db) {
-                    await this.db.collection('tasks').doc(id).update(updates);
+                    await this.db.collection('tasks').doc(id).update({ ...updates, workspaceId: currentWs });
                 }
                 this.notifyListeners(tasks);
             }
@@ -150,8 +191,9 @@
         async deleteTask(id) {
             await this.ensureReady();
             let tasks = await this.getTasks();
+            const currentWs = this.getWorkspaceId();
             tasks = tasks.filter(t => t.id !== id);
-            localStorage.setItem('tasks', JSON.stringify(tasks));
+            localStorage.setItem(`tasks_${currentWs}`, JSON.stringify(tasks));
 
             if (this.isFirebaseReady && this.db) {
                 await this.db.collection('tasks').doc(id).delete();

@@ -74,6 +74,7 @@
     // Init & Boot
     // ============================================================
     async function init() {
+        if (window.AuthModule) await window.AuthModule.init();
         if (window.ThemeModule) window.ThemeModule.init();
         if (window.SidebarModule) await window.SidebarModule.load();
         if (window.ModalsModule) window.ModalsModule.init();
