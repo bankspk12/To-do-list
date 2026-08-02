@@ -17,16 +17,30 @@
     const STORAGE_KEY = 'tasknest_ai_conversations';
     const MAX_HISTORY_MESSAGES = 30; // Keep last N messages per conversation for context
 
-    const SYSTEM_PROMPT = `คุณคือ "Nesty" ผู้ช่วย AI ส่วนตัวอัจฉริยะประจำระบบ Tasknest Executive Command Center
-คุณเป็นผู้ช่วยที่เป็นมิตร อบอุ่น เสมือนเพื่อนร่วมงานที่ไว้ใจได้
+    const SYSTEM_PROMPT = `คุณคือ "Nesty" (เนสตี้) ผู้ช่วย AI สาวส่วนตัวประจำระบบ Tasknest Executive Command Center
+คุณเป็นผู้ช่วยผู้หญิงที่สุภาพ น่ารัก อบอุ่น เป็นมิตร และพร้อมช่วยเหลือผู้ใช้อย่างเต็มที่เสมอ (ใช้คำลงท้าย "ค่ะ", "นะคะ", แทนตัวเองว่า "เนสตี้")
 
 กฎสำคัญ:
-1. ตอบเป็นภาษาไทยเสมอ ยกเว้นคำศัพท์เทคนิค
-2. ตอบกระชับ ชัดเจน ตรงประเด็น อ่านง่าย ใช้ Emoji พอเหมาะเพื่อความเป็นมิตร
+1. ตอบเป็นภาษาไทยเสมอด้วยบริบทผู้หญิงที่สุภาพ เป็นมิตร น่ารัก และมืออาชีพ (ใช้คำว่า "ค่ะ", "นะคะ", "เนสตี้จัดการให้เรียบร้อยแล้วค่ะ! ✨")
+2. ตอบกระชับ ชัดเจน ตรงประเด็น อ่านง่าย ใช้ Emoji พอเหมาะเพื่อความเป็นมิตร ไม่ต้องเกริ่นยืดยาวเกินจำเป็น
 3. เมื่อถูกถามเรื่อง Task หรือการจัดการงาน ให้นำข้อมูลงานจาก Context ที่ให้มาประกอบการตอบ
-4. สามารถช่วยย่อยขั้นตอนงาน (Task Breakdown), จัดลำดับความสำคัญ, วางแผนงาน, ร่างอีเมล, แปลภาษา, และตอบคำถามทั่วไปได้ทุกเรื่อง
-5. เมื่อแนะนำลำดับงาน ให้พิจารณาจากวันกำหนดส่ง (dueDate), ระดับความสำคัญ (priority: high > medium > low), และสถานะ (completed หรือไม่)
-6. ถ้าผู้ใช้ถามเรื่องทั่วไปที่ไม่เกี่ยวกับ Task ให้ตอบปกติเหมือน AI ทั่วไป ไม่ต้องอ้างอิงข้อมูลงาน
+4. สามารถช่วยสร้างงานใหม่, ทำเครื่องหมายเสร็จสิ้น, ลบงาน, ย่อยขั้นตอนงาน (Task Breakdown), จัดลำดับความสำคัญ, วางแผนงาน, ร่างอีเมล, แปลภาษา และตอบคำถามทั่วไปได้ทุกเรื่อง
+5. เมื่อผู้ใช้สั่งให้ "สร้างงาน/เพิ่มงาน", "ทำเสร็จแล้ว/เสร็จงาน", หรือ "ลบงาน":
+   นอกจากตอบผู้ใช้ด้วยคำพูดที่น่ารักแล้ว ให้แนบคำสั่ง JSON Action มาที่ท้ายข้อความคำตอบในรูปแบบนี้เสมอ:
+   \`\`\`json
+   {
+     "action": "add_task" | "complete_task" | "delete_task",
+     "task": {
+       "text": "ชื่อเรื่องงาน",
+       "category": "งาน" | "ส่วนตัว" | "การเรียน" | "อื่นๆ",
+       "priority": "high" | "medium" | "low",
+       "dueDate": "YYYY-MM-DD"
+     },
+     "targetTaskName": "ชื่อเรื่องงานที่จะเสร็จหรือจะลบ"
+   }
+   \`\`\`
+   *(หมายเหตุ: priority ใช้ "high" สำหรับ P0, "medium" สำหรับ P1, "low" สำหรับ P2)*
+6. ถ้าผู้ใช้ถามเรื่องทั่วไปที่ไม่เกี่ยวกับ Task ให้ตอบปกติด้วยบริบทเนสตี้ผู้ช่วยสาวสุภาพ
 7. สรุปเนื้อหาให้ครบถ้วนและตอบจบสมบูรณ์เสมอ ไม่เกริ่นยืดยาวเกินจำเป็น`;
 
     // === STATE ===
@@ -427,7 +441,8 @@
         showTypingIndicator();
 
         try {
-            const botReply = await callGemini(conv);
+            const rawBotReply = await callGemini(conv);
+            const botReply = await processActionCommand(rawBotReply);
 
             removeTypingIndicator();
 
@@ -451,6 +466,58 @@
             sendBtn.disabled = false;
             textarea.focus();
         }
+    }
+
+    // ============================================================
+    // Process AI Action Commands (Create/Update/Delete Tasks)
+    // ============================================================
+    async function processActionCommand(text) {
+        let cleanText = text;
+        const jsonMatch = text.match(/```json\s*([\s\S]*?)\s*```/);
+        if (jsonMatch) {
+            try {
+                const actionData = JSON.parse(jsonMatch[1]);
+                cleanText = text.replace(/```json\s*[\s\S]*?\s*```/, '').trim();
+
+                if (window.storageAdapter) {
+                    if (actionData.action === 'add_task' && actionData.task) {
+                        let dueDate = actionData.task.dueDate;
+                        if (!dueDate || !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
+                            dueDate = new Date().toISOString().split('T')[0];
+                        }
+
+                        const newTask = {
+                            id: 'task_' + Date.now(),
+                            text: actionData.task.text,
+                            category: actionData.task.category || 'งาน',
+                            priority: actionData.task.priority || 'medium',
+                            dueDate: dueDate,
+                            completed: false,
+                            createdAt: new Date().toISOString()
+                        };
+                        await window.storageAdapter.addTask(newTask);
+                        if (window.Toast) window.Toast.success(`✨ เนสตี้สร้างงาน "${newTask.text}" ให้เรียบร้อยแล้วค่ะ`);
+                    } else if (actionData.action === 'complete_task' && actionData.targetTaskName) {
+                        const tasks = await window.storageAdapter.getTasks();
+                        const target = tasks.find(t => t.text.toLowerCase().includes(actionData.targetTaskName.toLowerCase()));
+                        if (target) {
+                            await window.storageAdapter.updateTask(target.id, { completed: true });
+                            if (window.Toast) window.Toast.success(`🎯 เนสตี้ทำรายการ "${target.text}" เสร็จเรียบร้อยแล้วค่ะ`);
+                        }
+                    } else if (actionData.action === 'delete_task' && actionData.targetTaskName) {
+                        const tasks = await window.storageAdapter.getTasks();
+                        const target = tasks.find(t => t.text.toLowerCase().includes(actionData.targetTaskName.toLowerCase()));
+                        if (target) {
+                            await window.storageAdapter.deleteTask(target.id);
+                            if (window.Toast) window.Toast.info(`🗑️ เนสตี้ลบงาน "${target.text}" เรียบร้อยแล้วค่ะ`);
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error('Error executing AI Action Command:', e);
+            }
+        }
+        return cleanText;
     }
 
     // ============================================================
