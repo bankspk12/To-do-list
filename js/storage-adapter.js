@@ -86,6 +86,54 @@
             this.listeners.forEach(cb => cb(sorted));
         }
 
+        async migrateLegacyTasks(currentWs) {
+            // 1. LocalStorage Migration
+            const legacyLocal = localStorage.getItem('tasks');
+            if (legacyLocal) {
+                try {
+                    const legacyTasks = JSON.parse(legacyLocal);
+                    if (Array.isArray(legacyTasks) && legacyTasks.length > 0) {
+                        const currentTasks = JSON.parse(localStorage.getItem(`tasks_${currentWs}`) || '[]');
+                        const existingIds = new Set(currentTasks.map(t => t.id));
+                        const migrated = legacyTasks.map(t => ({ ...t, workspaceId: currentWs }));
+                        
+                        migrated.forEach(t => {
+                            if (!existingIds.has(t.id)) currentTasks.push(t);
+                        });
+
+                        localStorage.setItem(`tasks_${currentWs}`, JSON.stringify(this.sortTasks(currentTasks)));
+                        localStorage.removeItem('tasks'); // Clean up legacy key
+                    }
+                } catch (e) {
+                    console.warn('Legacy LocalStorage migration notice:', e);
+                }
+            }
+
+            // 2. Firestore Migration
+            if (this.isFirebaseReady && this.db) {
+                try {
+                    const allSnap = await this.db.collection('tasks').get();
+                    const batch = this.db.batch();
+                    let needsCommit = false;
+
+                    allSnap.forEach(doc => {
+                        const data = doc.data();
+                        if (!data.workspaceId || data.workspaceId === 'default_public_workspace') {
+                            batch.update(doc.ref, { workspaceId: currentWs });
+                            needsCommit = true;
+                        }
+                    });
+
+                    if (needsCommit) {
+                        await batch.commit();
+                        console.log('✨ Migrated legacy Firestore tasks to workspace:', currentWs);
+                    }
+                } catch (e) {
+                    console.warn('Firestore legacy migration notice:', e);
+                }
+            }
+        }
+
         listenFirestore() {
             if (!this.db) return;
             const currentWs = this.getWorkspaceId();
@@ -95,11 +143,13 @@
             }
 
             this.unsubscribeListener = this.db.collection('tasks')
-                .where('workspaceId', '==', currentWs)
                 .onSnapshot((snapshot) => {
                     const tasks = [];
                     snapshot.forEach(doc => {
-                        tasks.push({ id: doc.id, ...doc.data() });
+                        const data = doc.data();
+                        if (data.workspaceId === currentWs || !data.workspaceId || data.workspaceId === 'default_public_workspace') {
+                            tasks.push({ id: doc.id, ...data, workspaceId: currentWs });
+                        }
                     });
                     const sorted = this.sortTasks(tasks);
                     localStorage.setItem(`tasks_${currentWs}`, JSON.stringify(sorted));
@@ -113,14 +163,19 @@
         async getTasks() {
             await this.ensureReady();
             const currentWs = this.getWorkspaceId();
+            await this.migrateLegacyTasks(currentWs);
+
             let tasks = [];
 
             if (this.isFirebaseReady && this.db) {
                 try {
-                    const snapshot = await this.db.collection('tasks')
-                        .where('workspaceId', '==', currentWs)
-                        .get();
-                    snapshot.forEach(doc => tasks.push({ id: doc.id, ...doc.data() }));
+                    const snapshot = await this.db.collection('tasks').get();
+                    snapshot.forEach(doc => {
+                        const data = doc.data();
+                        if (data.workspaceId === currentWs || !data.workspaceId || data.workspaceId === 'default_public_workspace') {
+                            tasks.push({ id: doc.id, ...data, workspaceId: currentWs });
+                        }
+                    });
                     tasks = this.sortTasks(tasks);
                     localStorage.setItem(`tasks_${currentWs}`, JSON.stringify(tasks));
                     return tasks;
