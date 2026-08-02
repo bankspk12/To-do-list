@@ -174,7 +174,7 @@
                     snapshot.forEach(doc => {
                         const data = doc.data();
                         if (data.workspaceId === currentWs || !data.workspaceId || data.workspaceId === 'default_public_workspace') {
-                            tasks.push({ id: doc.id, ...data, workspaceId: currentWs });
+                            tasks.push({ ...data, id: doc.id, workspaceId: currentWs });
                         }
                     });
                     const sorted = this.sortTasks(tasks);
@@ -199,7 +199,7 @@
                     snapshot.forEach(doc => {
                         const data = doc.data();
                         if (data.workspaceId === currentWs || !data.workspaceId || data.workspaceId === 'default_public_workspace') {
-                            tasks.push({ id: doc.id, ...data, workspaceId: currentWs });
+                            tasks.push({ ...data, id: doc.id, workspaceId: currentWs });
                         }
                     });
                     tasks = this.sortTasks(tasks);
