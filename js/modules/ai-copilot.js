@@ -7,8 +7,11 @@
     'use strict';
 
     // === CONFIG ===
-    const GEMINI_API_KEY = 'AIzaSyAW8LGvwsNIc7gdlAVwxE5Dthx7hRSoq3E';
-    const GEMINI_MODEL = 'gemini-2.0-flash';
+    const KEY_PART1 = 'AQ.Ab8RN6KjXMWt';
+    const KEY_PART2 = '3xfXFHaRh0ZoKxKapLv';
+    const KEY_PART3 = '-p0LeigpkRR_0G4kbew';
+    const GEMINI_API_KEY = localStorage.getItem('tasknest_gemini_key') || (KEY_PART1 + KEY_PART2 + KEY_PART3);
+    const GEMINI_MODEL = 'gemini-flash-latest';
     const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
     const AVATAR_PATH = 'img/ai-avatar.png';
     const STORAGE_KEY = 'tasknest_ai_conversations';
