@@ -15,13 +15,13 @@
     const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
     const AVATAR_PATH = 'img/ai-avatar.png';
     const STORAGE_KEY = 'tasknest_ai_conversations';
-    const MAX_HISTORY_MESSAGES = 30; // Keep last N messages per conversation for context
+    const MAX_HISTORY_MESSAGES = 12; // Keep last 12 messages for ultra-fast response
 
     const SYSTEM_PROMPT = `คุณคือ "Nesty" (เนสตี้) ผู้ช่วย AI สาวส่วนตัวประจำระบบ Tasknest Executive Command Center
 คุณเป็นผู้ช่วยผู้หญิงที่สุภาพ น่ารัก อบอุ่น เป็นมิตร และพร้อมช่วยเหลือผู้ใช้อย่างเต็มที่เสมอ (ใช้คำลงท้าย "ค่ะ", "นะคะ", แทนตัวเองว่า "เนสตี้")
 
 กฎสำคัญ:
-1. ตอบเป็นภาษาไทยเสมอด้วยบริบทผู้หญิงที่สุภาพ เป็นมิตร น่ารัก และมืออาชีพ (ใช้คำว่า "ค่ะ", "นะคะ", "เนสตี้จัดการให้เรียบร้อยแล้วค่ะ! ✨")
+1. ตอบเป็นภาษาไทยเสมอด้วยบริบทผู้หญิงที่สุภาพ เป็นมิตร น่ารัก และมืออาชีพ (ใช้คำว่า "ค่ะ", "นะคะ", "เนสตี้จัดการให้เรียบร้อยแล้วค่ะ!")
 2. ตอบกระชับ ชัดเจน ตรงประเด็น อ่านง่าย ใช้ Emoji พอเหมาะเพื่อความเป็นมิตร ไม่ต้องเกริ่นยืดยาวเกินจำเป็น
 3. เมื่อถูกถามเรื่อง Task หรือการจัดการงาน ให้นำข้อมูลงานจาก Context ที่ให้มาประกอบการตอบ
 4. สามารถช่วยสร้างงานใหม่, ทำเครื่องหมายเสร็จสิ้น, ลบงาน, ย่อยขั้นตอนงาน (Task Breakdown), จัดลำดับความสำคัญ, วางแผนงาน, ร่างอีเมล, แปลภาษา และตอบคำถามทั่วไปได้ทุกเรื่อง
@@ -524,11 +524,17 @@
     // Call Gemini API
     // ============================================================
     async function callGemini(conv) {
-        // Build context: system prompt + task data + conversation history
-        const taskContext = getTaskContext();
+        // Detect if prompt requires task context or if asking specifically about completed tasks
+        const lastUserMsg = conv.messages.filter(m => m.role === 'user').slice(-1)[0]?.text || '';
+        const taskKeywords = /งาน|task|ค้าง|จัดลำดับ|สร้าง|เพิ่ม|ลบ|เสร็จ|ทำเสร็จ|ช่วยดู|ด่วน| priority|p0|p1|p2|พรุ่งนี้|วันนี้|กำหนด/i;
+        const isTaskRelated = taskKeywords.test(lastUserMsg);
+        const wantsCompleted = /เสร็จแล้ว|งานที่เสร็จ|ทำเสร็จ|completed|ประวัติ/i.test(lastUserMsg);
+
+        // Fetch task context only when task-related, otherwise keep context lightweight & super fast
+        const taskContext = isTaskRelated ? getTaskContext(wantsCompleted) : '';
         const today = new Date().toLocaleDateString('th-TH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
-        const systemText = SYSTEM_PROMPT + `\n\nวันนี้คือ: ${today}\n\n${taskContext}`;
+        const systemText = SYSTEM_PROMPT + `\n\nวันนี้คือ: ${today}` + (taskContext ? `\n\n${taskContext}` : '');
 
         // Build message history for Gemini (last N messages)
         const historySlice = conv.messages.slice(-MAX_HISTORY_MESSAGES);
@@ -562,8 +568,8 @@
         const body = {
             contents,
             generationConfig: {
-                temperature: 0.7,
-                topP: 0.95,
+                temperature: 0.5,
+                topP: 0.8,
                 topK: 40,
                 maxOutputTokens: 8192
             }
@@ -587,44 +593,50 @@
     }
 
     // ============================================================
-    // Get Current Task Context for AI
+    // Get Current Task Context for AI (Optimized & Selective)
     // ============================================================
-    function getTaskContext() {
+    function getTaskContext(includeCompleted = false) {
         try {
-            if (!window.storageAdapter) return '(ไม่มีข้อมูลงานในขณะนี้)';
+            if (!window.storageAdapter) return '';
 
             const wsId = window.storageAdapter.getWorkspaceId();
             const raw = localStorage.getItem(`tasks_${wsId}`);
-            if (!raw) return '(ไม่มีข้อมูลงานในขณะนี้)';
+            if (!raw) return '';
 
             const tasks = JSON.parse(raw);
             if (!tasks || tasks.length === 0) return '(ยังไม่มีงานในระบบ)';
 
             const today = new Date().toISOString().split('T')[0];
             const pending = tasks.filter(t => !t.completed);
-            const completed = tasks.filter(t => t.completed);
             const overdue = pending.filter(t => t.dueDate && t.dueDate < today);
             const highPrio = pending.filter(t => t.priority === 'high');
 
-            let ctx = `📊 ข้อมูลงานปัจจุบันของผู้ใช้ (${tasks.length} งานทั้งหมด):\n`;
-            ctx += `- รอดำเนินการ: ${pending.length} งาน\n`;
-            ctx += `- เสร็จแล้ว: ${completed.length} งาน\n`;
-            ctx += `- เลยกำหนด: ${overdue.length} งาน\n`;
-            ctx += `- งานด่วน P0: ${highPrio.length} งาน\n\n`;
+            let ctx = `📊 สรุปงานของผู้ใช้ (รอดำเนินการ: ${pending.length} งาน | ด่วน P0: ${highPrio.length} งาน | เลยกำหนด: ${overdue.length} งาน):\n`;
 
             if (pending.length > 0) {
-                ctx += '📌 รายการงานที่รอดำเนินการ:\n';
+                ctx += '📌 รายการงานรอดำเนินการ:\n';
                 pending.slice(0, 15).forEach((t, i) => {
                     const prio = t.priority === 'high' ? '🔴P0' : (t.priority === 'low' ? '🟢P2' : '🟡P1');
                     const due = t.dueDate || 'ไม่ระบุ';
                     const overdueTag = (t.dueDate && t.dueDate < today) ? ' ⚠️เลยกำหนด' : '';
                     ctx += `${i + 1}. [${prio}] "${t.text}" — หมวด: ${t.category || 'ทั่วไป'} — กำหนด: ${due}${overdueTag}\n`;
                 });
+            } else {
+                ctx += '(ไม่มีงานรอดำเนินการ)\n';
+            }
+
+            // Include completed tasks only when explicitly asked
+            if (includeCompleted) {
+                const completed = tasks.filter(t => t.completed);
+                ctx += `\n✅ งานที่ทำเสร็จแล้ว (${completed.length} งาน):\n`;
+                completed.slice(0, 10).forEach((t, i) => {
+                    ctx += `${i + 1}. "${t.text}" (เสร็จเมื่อ: ${t.updatedAt ? t.updatedAt.split('T')[0] : 'ไม่ระบุ'})\n`;
+                });
             }
 
             return ctx;
         } catch (e) {
-            return '(ไม่สามารถโหลดข้อมูลงานได้)';
+            return '';
         }
     }
 
