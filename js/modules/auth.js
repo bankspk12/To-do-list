@@ -209,6 +209,89 @@
             this.isUnlocked = false;
             window.location.reload();
         }
+
+        showChangePinModal() {
+            if (!this.isUnlocked) {
+                if (window.ToastModule) window.ToastModule.show('กรุณาปลดล็อกคลังข้อมูลก่อนทำการเปลี่ยนรหัส', 'warning');
+                return;
+            }
+
+            const existingModal = document.getElementById('changePinModalOverlay');
+            if (existingModal) existingModal.remove();
+
+            const overlay = document.createElement('div');
+            overlay.id = 'changePinModalOverlay';
+            overlay.className = 'vault-lock-overlay show';
+            overlay.innerHTML = `
+                <div class="vault-lock-card">
+                    <div class="vault-icon-header">
+                        <div class="vault-shield-glow" style="background:rgba(0, 206, 201, 0.2); color:var(--success); border-color:rgba(0, 206, 201, 0.4);"><i class="fas fa-key"></i></div>
+                        <h2>เปลี่ยนรหัส PIN / Master Password</h2>
+                        <p>ย้ายคลังงานทั้งหมดของคุณไปยัง PIN / Password ใหม่</p>
+                    </div>
+
+                    <div class="vault-input-group" style="text-align:left; margin-bottom:12px;">
+                        <label style="font-size:0.8rem; font-weight:600; color:var(--text-secondary); margin-bottom:4px; display:block;">รหัส PIN / Password เดิม:</label>
+                        <input type="password" id="oldPassInput" class="vault-pass-input" placeholder="กรอกรหัสเดิม..." style="text-align:left;">
+                    </div>
+
+                    <div class="vault-input-group" style="text-align:left; margin-bottom:12px;">
+                        <label style="font-size:0.8rem; font-weight:600; color:var(--text-secondary); margin-bottom:4px; display:block;">รหัส PIN / Password ใหม่:</label>
+                        <input type="password" id="newPassInput" class="vault-pass-input" placeholder="กรอกรหัสใหม่..." style="text-align:left;">
+                    </div>
+
+                    <div class="vault-input-group" style="text-align:left; margin-bottom:20px;">
+                        <label style="font-size:0.8rem; font-weight:600; color:var(--text-secondary); margin-bottom:4px; display:block;">ยืนยันรหัสใหม่:</label>
+                        <input type="password" id="confirmPassInput" class="vault-pass-input" placeholder="ยืนยันรหัสใหม่..." style="text-align:left;">
+                    </div>
+
+                    <div style="display:flex; gap:12px;">
+                        <button type="button" class="btn btn-secondary" id="cancelChangePinBtn" style="flex:1;">ยกเลิก</button>
+                        <button type="button" class="btn btn-primary" id="saveChangePinBtn" style="flex:1;"><i class="fas fa-save"></i> บันทึกรหัสใหม่</button>
+                    </div>
+                </div>
+            `;
+
+            document.body.appendChild(overlay);
+
+            overlay.querySelector('#cancelChangePinBtn').addEventListener('click', () => overlay.remove());
+            overlay.querySelector('#saveChangePinBtn').addEventListener('click', () => this.executeChangePin(overlay));
+        }
+
+        async executeChangePin(overlay) {
+            const oldPass = overlay.querySelector('#oldPassInput').value.trim();
+            const newPass = overlay.querySelector('#newPassInput').value.trim();
+            const confirmPass = overlay.querySelector('#confirmPassInput').value.trim();
+
+            if (!oldPass || !newPass || !confirmPass) {
+                if (window.ToastModule) window.ToastModule.show('กรุณากรอกข้อมูลให้ครบถ้วนทุกช่อง', 'warning');
+                return;
+            }
+
+            const oldWs = await this.hashPasscode(oldPass);
+            if (oldWs !== this.currentWorkspaceId) {
+                if (window.ToastModule) window.ToastModule.show('รหัส PIN เดิมไม่ถูกต้อง', 'danger');
+                return;
+            }
+
+            if (newPass !== confirmPass) {
+                if (window.ToastModule) window.ToastModule.show('รหัส PIN ใหม่สองช่องไม่ตรงกัน', 'warning');
+                return;
+            }
+
+            const newWs = await this.hashPasscode(newPass);
+
+            // Re-bind tasks from oldWs to newWs in StorageAdapter
+            if (window.storageAdapter) {
+                await window.storageAdapter.rebindWorkspace(oldWs, newWs);
+            }
+
+            this.currentWorkspaceId = newWs;
+            sessionStorage.setItem(SESSION_KEY, newWs);
+            overlay.remove();
+
+            if (window.ToastModule) window.ToastModule.show('🔑 เปลี่ยนรหัส PIN และย้ายคลังงานสำเร็จ!', 'success');
+        }
     }
 
     window.AuthModule = new AuthManager();

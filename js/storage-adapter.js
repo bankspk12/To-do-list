@@ -33,6 +33,32 @@
             this.getTasks().then(tasks => this.notifyListeners(tasks));
         }
 
+        async rebindWorkspace(oldWs, newWs) {
+            await this.ensureReady();
+
+            // 1. LocalStorage Rebind
+            const tasks = JSON.parse(localStorage.getItem(`tasks_${oldWs}`) || '[]');
+            const updated = tasks.map(t => ({ ...t, workspaceId: newWs }));
+            localStorage.setItem(`tasks_${newWs}`, JSON.stringify(updated));
+            localStorage.removeItem(`tasks_${oldWs}`);
+
+            // 2. Firestore Rebind
+            if (this.isFirebaseReady && this.db) {
+                try {
+                    const snap = await this.db.collection('tasks').where('workspaceId', '==', oldWs).get();
+                    const batch = this.db.batch();
+                    snap.forEach(doc => {
+                        batch.update(doc.ref, { workspaceId: newWs });
+                    });
+                    await batch.commit();
+                } catch (e) {
+                    console.error('Firestore workspace rebind error:', e);
+                }
+            }
+
+            this.setWorkspace(newWs);
+        }
+
         async initFirebase() {
             const config = window.APP_CONFIG?.firebaseConfig;
             if (window.APP_CONFIG?.useFirebase && window.firebase) {
